@@ -1,0 +1,153 @@
+﻿@page "/"
+@rendermode InteractiveWebAssembly
+@inject ApiClient Api
+
+<PageTitle>sup</PageTitle>
+
+<div class="controls">
+  <label>Select CSV file:</label>
+  <select @bind="selectedFile">
+    <option value="">-- choose file --</option>
+    @if (files is not null)
+    {
+      foreach (var f in files)
+      {
+        <option value="@f">@f</option>
+      }
+    }
+  </select>
+
+  <button @onclick="RefreshFiles">Refresh</button>
+  <button @onclick="LoadDataset" disabled="@string.IsNullOrWhiteSpace(selectedFile)">Load</button>
+  <button @onclick="ComputeTopPair" disabled="@(preview is null || preview.Count == 0)">Compute Top Pair</button>
+</div>
+
+@if (busy)
+{
+  <p><em>Working...</em></p>
+}
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+  <div class="msg">@message</div>
+}
+
+@if (preview is not null && preview.Count > 0)
+{
+  <h4>Preview</h4>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Employee ID</th>
+          <th>Project ID</th>
+          <th>Date From</th>
+          <th>Date To</th>
+        </tr>
+      </thead>
+      <tbody>
+        @foreach (var row in preview)
+        {
+          <tr>
+            <td>@row.EmpId</td>
+            <td>@row.ProjectId</td>
+            <td>@row.DateFrom</td>
+            <td>@row.DateTo</td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
+
+@if (topPair is not null)
+{
+  <div class="card">
+    <h4>Top Pair (Longest Overlap)</h4>
+    <p>
+      <strong>EmpId #1:</strong> @topPair.EmpId1<br />
+      <strong>EmpId #2:</strong> @topPair.EmpId2<br />
+      <strong>Project:</strong> @topPair.ProjectId<br />
+      <strong>Days worked together:</strong> @topPair.TimeCoop
+    </p>
+  </div>
+}
+
+@code {
+  string[]? files;
+  string? selectedFile;
+  List<PairOfEmployeesRequest>? preview;
+  LongestPairResult? topPair;
+  bool busy;
+  string? message;
+
+  protected override async Task OnInitializedAsync()
+  {
+    await RefreshFiles();
+  }
+
+  private async Task RefreshFiles()
+  {
+    busy = true; message = null;
+    try
+    {
+      files = await Api.GetFilesAsync();
+      if (files is null || files.Length == 0)
+        message = "No CSV files found on the server.";
+    }
+    catch (Exception ex)
+    {
+      message = $"Failed to get files: {ex.Message}";
+    }
+    finally
+    {
+      busy = false;
+    }
+  }
+
+  private async Task LoadDataset()
+  {
+    if (string.IsNullOrWhiteSpace(selectedFile)) return;
+
+    busy = true; message = null;
+    preview = null; topPair = null;
+
+    try
+    {
+      var count = await Api.UploadAsync(selectedFile!);
+      message = $"Loaded '{selectedFile}' with {count} record(s).";
+
+      preview = await Api.GetPreviewAsync();
+      if (preview is null || preview.Count == 0)
+        message += " No rows to display.";
+    }
+    catch (Exception ex)
+    {
+      message = $"Load failed: {ex.Message}";
+    }
+    finally
+    {
+      busy = false;
+    }
+  }
+
+  private async Task ComputeTopPair()
+  {
+    busy = true; message = null; topPair = null;
+
+    try
+    {
+      topPair = await Api.GetTopPairAsync();
+      if (topPair is null)
+        message = "No overlapping pairs found.";
+    }
+    catch (Exception ex)
+    {
+      message = $"Computation failed: {ex.Message}";
+    }
+    finally
+    {
+      busy = false;
+    }
+  }
+}
